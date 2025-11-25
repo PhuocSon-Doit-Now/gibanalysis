@@ -1,6 +1,8 @@
 streamlit
 pandas
 numpy
-lifelines
 matplotlib
+lifelines
+scikit-learn
+patsy
 scipy
