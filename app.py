@@ -12,6 +12,8 @@ import joblib
 import matplotlib.pyplot as plt
 from sklearn.metrics import RocCurveDisplay
 from pandas import read_csv
+import shap
+shap.initjs()
 
 st.set_page_config(layout="wide")
 st.title("Red Blood Cell Distribution Width as a Risk Factor for 30/90‑Day Mortality in Patients with Gastrointestinal Bleeding")
@@ -45,12 +47,13 @@ if 'rdw_group' in df.columns:
 # ======================================================
 # Create main tabs (4 tabs)
 # ======================================================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📈 Kaplan–Meier",
     "📉 ROC Curve (RDW)",
     "📊 ROC Comparison (AIMS65 / SOFA / RDW)",
     "🔶 RCS–Cox (Restricted Cubic Splines)",
-    "📊 Model Comparison – ROC Curves"
+    "📊 Model Comparison – ROC Curves",
+    "🚀 Gradient Boosting – Feature Selection + Training + Evaluation"
 ])
 
 # --------------------
@@ -503,6 +506,100 @@ with tab5:
         axes[i].set_ylabel('True Positive Rate (Positive label: 1)')
 
     st.pyplot(fig)
+
+# ======================================================
+# TAB 6: Gradient Boosting – Mortality Prediction
+# ======================================================
+with tab6:
+
+    import streamlit as st
+    import joblib
+    import pandas as pd
+    import shap
+    import matplotlib.pyplot as plt
+    import os
+
+    st.header("🧠 Gradient Boosting – Mortality Prediction")
+
+    BASE_DIR = os.path.dirname(__file__)
+
+    # ================================
+    # LOAD MODEL + X_train
+    # ================================
+    @st.cache_resource
+    def load_gb_model():
+        model_path = os.path.join(BASE_DIR, "gb_model.joblib")
+        xtrain_path = os.path.join(BASE_DIR, "gb_X_train.joblib")
+
+        if not os.path.exists(model_path):
+            st.error("❌ Missing file: gb_model.joblib")
+            st.stop()
+
+        if not os.path.exists(xtrain_path):
+            st.error("❌ Missing file: gb_X_train.joblib")
+            st.stop()
+
+        model = joblib.load(model_path)
+        X_train = joblib.load(xtrain_path)
+        return model, X_train
+
+    gb_model, X_train_tab6 = load_gb_model()
+
+    # SHAP Explainer
+    explainer = shap.Explainer(gb_model, X_train_tab6)
+
+    # ================================
+    # USER INPUT
+    # ================================
+    st.subheader("📋 Input patient values")
+
+    col1, col2 = st.columns(2)
+
+    vars = {}
+    with col1:
+        vars['age'] = st.number_input('Age', 16, 100, 60)
+        vars['bmi'] = st.number_input('BMI', 10.0, 60.0, 22.5)
+        vars['temperature_max'] = st.number_input('Max Temperature', 33.0, 42.0, 37.0)
+        vars['sofa'] = st.number_input('SOFA', 0, 24, 4)
+        vars['sapsii'] = st.number_input('SAPSII', 0, 200, 35)
+        vars['malignant_cancer'] = st.selectbox('Malignant cancer', [0, 1], index=0)
+
+    with col2:
+        vars['has_mv'] = st.selectbox('Mechanical Ventilation', [0, 1], index=0)
+        vars['has_vaso'] = st.selectbox('Vasopressor', [0, 1], index=0)
+        vars['inr_max'] = st.number_input('INR max', 0.5, 10.0, 1.2)
+        vars['platelets_max'] = st.number_input('Platelets max', 1.0, 1500.0, 250.0)
+        vars['chloride_max'] = st.number_input('Chloride max', 70.0, 140.0, 104.0)
+        vars['aims65_score'] = st.number_input('AIMS65 Score', 0, 5, 1)
+
+    # ================================
+    # PREDICT BUTTON
+    # ================================
+    arr = ['Survival', 'Died']
+
+    if st.button("🔮 Predict"):
+
+        df_pred = pd.DataFrame([vars])
+
+        pred = gb_model.predict(df_pred)[0]
+        prob = gb_model.predict_proba(df_pred)[0][1]
+
+        st.subheader(f"### 🧾 Prediction: **{arr[pred]}**")
+        st.info(f"**Probability of Death:** {prob:.3f}")
+
+        # ================================
+        # SHAP VALUES
+        # ================================
+        shap_values = explainer(df_pred)
+
+        # ---------- WATERFALL PLOT ----------
+        st.subheader("🌊 SHAP Waterfall Plot")
+
+        fig_water, ax = plt.subplots(figsize=(10, 6))
+        shap.plots.waterfall(shap_values[0], show=False)
+        st.pyplot(fig_water)
+
+
 
 
 
