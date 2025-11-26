@@ -1,16 +1,20 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from lifelines import KaplanMeierFitter, CoxPHFitter
 from lifelines.statistics import multivariate_logrank_test
 from lifelines.plotting import add_at_risk_counts
 from sklearn.metrics import roc_curve, roc_auc_score
 from sklearn.linear_model import LogisticRegression
 from patsy import dmatrix
+import os
+import joblib
+import matplotlib.pyplot as plt
+from sklearn.metrics import RocCurveDisplay
+from pandas import read_csv
 
 st.set_page_config(layout="wide")
-st.title("RDW Analysis: Kaplan–Meier, ROC & RCS–Cox")
+st.title("Red Blood Cell Distribution Width as a Risk Factor for 30/90‑Day Mortality in Patients with Gastrointestinal Bleeding")
 
 # ======================================================
 # LOAD CSV
@@ -41,11 +45,12 @@ if 'rdw_group' in df.columns:
 # ======================================================
 # Create main tabs (4 tabs)
 # ======================================================
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📈 Kaplan–Meier",
     "📉 ROC Curve (RDW)",
     "📊 ROC Comparison (AIMS65 / SOFA / RDW)",
-    "🔶 RCS–Cox (Restricted Cubic Splines)"
+    "🔶 RCS–Cox (Restricted Cubic Splines)",
+    "📊 Model Comparison – ROC Curves"
 ])
 
 # --------------------
@@ -280,9 +285,6 @@ with tab3:
     st.pyplot(fig)
 
 # ======================================================
-# TAB 4: RCS–Cox (8 plots total: 4 per outcome)
-# ======================================================
-# ======================================================
 # TAB 4: RCS–Cox (robust implementation tuned to your pipeline)
 # ======================================================
 COVARIATES_RCS = [
@@ -417,6 +419,91 @@ with tab4:
 
     plt.tight_layout()
     st.pyplot(fig)
+# ======================================================
+# TAB 5: Model Comparison – ROC Curves (30-day & 90-day Mortality)
+# ======================================================
+with tab5:
+
+    st.header("📊 Model Comparison – ROC Curves (30-day & 90-day Mortality)")
+
+    BASE_DIR = os.path.dirname(__file__)
+
+    # ================================
+    # LOAD DATA
+    # ================================
+    @st.cache_resource
+    def load_data():
+        # Đảm bảo bạn đã nhập 'read_csv'
+        try:
+             X = pd.read_csv(os.path.join(BASE_DIR, "X_test.csv"))
+             Y = pd.read_csv(os.path.join(BASE_DIR, "Y_test.csv"))
+        except NameError:
+             import pandas as pd
+             X = pd.read_csv(os.path.join(BASE_DIR, "X_test.csv"))
+             Y = pd.read_csv(os.path.join(BASE_DIR, "Y_test.csv"))
+        return X, Y
+
+    # ================================
+    # LOAD MODELS (.joblib) - ĐÃ SỬA ĐỔI
+    # ================================
+    @st.cache_resource
+    def load_model():
+        # Tải bộ mô hình 30 ngày
+        models_30d = {
+            "Ada Boost": joblib.load(os.path.join(BASE_DIR, "AdaBoost_mortality_30d.joblib")),
+            "Extra Trees": joblib.load(os.path.join(BASE_DIR, "ExtraTrees_mortality_30d.joblib")),
+            "Gradient Boosting": joblib.load(os.path.join(BASE_DIR, "GradientBoosting_mortality_30d.joblib")),
+            "Random Forest": joblib.load(os.path.join(BASE_DIR, "RandomForest_mortality_30d.joblib")),
+        }
+        # Tải bộ mô hình 90 ngày
+        models_90d = {
+            "Ada Boost": joblib.load(os.path.join(BASE_DIR, "AdaBoost_mortality_90d.joblib")),
+            "Extra Trees": joblib.load(os.path.join(BASE_DIR, "ExtraTrees_mortality_90d.joblib")),
+            "Gradient Boosting": joblib.load(os.path.join(BASE_DIR, "GradientBoosting_mortality_90d.joblib")),
+            "Random Forest": joblib.load(os.path.join(BASE_DIR, "RandomForest_mortality_90d.joblib")),
+        }
+        # Trả về cả hai bộ mô hình
+        return models_30d, models_90d
+
+    X_test, Y_test = load_data()
+    # Nhận hai bộ mô hình
+    models_30d, models_90d = load_model()
+
+    # ================================
+    # PLOT ROC – only 30d & 90d
+    # ================================
+    mortalities = ["mortality_30d", "mortality_90d"]
+    titles = ["30-Day Mortality", "90-Day Mortality"]
+
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 8), )
+
+    for i in range(len(mortalities)):
+        target = mortalities[i]
+        y_test = Y_test[target]
+        
+        # CHỌN BỘ MÔ HÌNH PHÙ HỢP
+        if target == "mortality_30d":
+            current_models = models_30d
+        else:
+            current_models = models_90d # mortality_90d
+
+        for name, model in current_models.items():
+            RocCurveDisplay.from_estimator(
+                estimator=model,
+                X=X_test,
+                y=y_test,
+                ax=axes[i],
+                name=f"{name} (AUC = {model.score(X_test, y_test):.2f})"
+            )
+
+        axes[i].set_title(titles[i], fontsize=16)
+        axes[i].grid(True)
+        # Thêm nhãn trục để biểu đồ dễ đọc hơn
+        axes[i].set_xlabel('False Positive Rate (Positive label: 1)')
+        axes[i].set_ylabel('True Positive Rate (Positive label: 1)')
+
+    st.pyplot(fig)
+
 
 
 
