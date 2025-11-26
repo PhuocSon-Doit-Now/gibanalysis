@@ -13,6 +13,12 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import RocCurveDisplay
 from pandas import read_csv
 import shap
+import streamlit as st
+import joblib
+import pandas as pd
+import shap
+import matplotlib.pyplot as plt
+import os
 shap.initjs()
 
 st.set_page_config(layout="wide")
@@ -511,13 +517,6 @@ with tab5:
 # TAB 6: Gradient Boosting – Mortality Prediction
 # ======================================================
 with tab6:
-
-    import streamlit as st
-    import joblib
-    import pandas as pd
-    import shap
-    import matplotlib.pyplot as plt
-    import os
 
     st.header("🧠 Gradient Boosting – Mortality Prediction")
 

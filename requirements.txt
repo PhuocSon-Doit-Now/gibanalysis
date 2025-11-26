@@ -6,3 +6,4 @@ matplotlib
 lifelines
 patsy
 joblib
+shap
