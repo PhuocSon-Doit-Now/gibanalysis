@@ -479,77 +479,65 @@ with tab5:
     # ================================
     @st.cache_resource
     def load_data():
-        # Đảm bảo bạn đã nhập 'read_csv'
-        try:
-             X = pd.read_csv(os.path.join(BASE_DIR, "X_test.csv"))
-             Y = pd.read_csv(os.path.join(BASE_DIR, "Y_test.csv"))
-        except NameError:
-             import pandas as pd
-             X = pd.read_csv(os.path.join(BASE_DIR, "X_test.csv"))
-             Y = pd.read_csv(os.path.join(BASE_DIR, "Y_test.csv"))
+        X = pd.read_csv(os.path.join(BASE_DIR, "X_test.csv"))
+        Y = pd.read_csv(os.path.join(BASE_DIR, "Y_test.csv"))
         return X, Y
 
     # ================================
-    # LOAD MODELS (.joblib) - ĐÃ SỬA ĐỔI
+    # LOAD MODELS (.joblib)
     # ================================
     @st.cache_resource
     def load_model():
-        # Tải bộ mô hình 30 ngày
         models_30d = {
             "Ada Boost": joblib.load(os.path.join(BASE_DIR, "AdaBoost_mortality_30d.joblib")),
             "Extra Trees": joblib.load(os.path.join(BASE_DIR, "ExtraTrees_mortality_30d.joblib")),
             "Gradient Boosting": joblib.load(os.path.join(BASE_DIR, "GradientBoosting_mortality_30d.joblib")),
             "Random Forest": joblib.load(os.path.join(BASE_DIR, "RandomForest_mortality_30d.joblib")),
         }
-        # Tải bộ mô hình 90 ngày
+
         models_90d = {
             "Ada Boost": joblib.load(os.path.join(BASE_DIR, "AdaBoost_mortality_90d.joblib")),
             "Extra Trees": joblib.load(os.path.join(BASE_DIR, "ExtraTrees_mortality_90d.joblib")),
             "Gradient Boosting": joblib.load(os.path.join(BASE_DIR, "GradientBoosting_mortality_90d.joblib")),
             "Random Forest": joblib.load(os.path.join(BASE_DIR, "RandomForest_mortality_90d.joblib")),
         }
-        # Trả về cả hai bộ mô hình
+
         return models_30d, models_90d
 
     X_test, Y_test = load_data()
-    # Nhận hai bộ mô hình
     models_30d, models_90d = load_model()
 
     # ================================
-    # PLOT ROC – only 30d & 90d
+    # PLOT ROC
     # ================================
     mortalities = ["mortality_30d", "mortality_90d"]
     titles = ["30-Day Mortality", "90-Day Mortality"]
 
-    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20, 8), )
+    fig, axes = plt.subplots(1, 2, figsize=(20, 8))
 
-    for i in range(len(mortalities)):
-        target = mortalities[i]
+    for i, target in enumerate(mortalities):
+
         y_test = Y_test[target]
-        
-        # CHỌN BỘ MÔ HÌNH PHÙ HỢP
-        if target == "mortality_30d":
-            current_models = models_30d
-        else:
-            current_models = models_90d # mortality_90d
+
+        current_models = models_30d if target == "mortality_30d" else models_90d
 
         for name, model in current_models.items():
+
+            # Không đưa AUC vào name nữa — để RocCurveDisplay tự hiển thị 1 lần
             RocCurveDisplay.from_estimator(
                 estimator=model,
                 X=X_test,
                 y=y_test,
                 ax=axes[i],
-                name=f"{name} (AUC = {model.score(X_test, y_test):.2f})"
+                name=name        # chỉ hiển thị tên model
             )
 
         axes[i].set_title(titles[i], fontsize=16)
         axes[i].grid(True)
-        # Thêm nhãn trục để biểu đồ dễ đọc hơn
         axes[i].set_xlabel('False Positive Rate (Positive label: 1)')
         axes[i].set_ylabel('True Positive Rate (Positive label: 1)')
 
     st.pyplot(fig)
-
 # ======================================================
 # TAB 6: Gradient Boosting – Mortality Prediction
 # ======================================================
