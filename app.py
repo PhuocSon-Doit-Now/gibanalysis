@@ -144,8 +144,8 @@ with tab1:
             except Exception:
                 pass
 
-        if models:
-            add_at_risk_counts(*models, ax=ax)
+        # if models:
+        #     add_at_risk_counts(*models, ax=ax)
 
         ax.set_title(titles[i])
         ax.set_ylim(0,1)
