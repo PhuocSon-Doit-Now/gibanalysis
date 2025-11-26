@@ -44,12 +44,58 @@ if 'rdw_group' in df.columns:
 # ======================================================
 # Create main tabs (4 tabs)
 # ======================================================
+# CSS tùy chỉnh để tăng kích thước phông chữ của tab
+st.markdown("""
+<style>
+
+/* --- STYLE TAB ĐẸP – hiện đại --- */
+button[role="tab"] > div {
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    padding: 10px 18px !important;
+}
+
+/* Container của toàn bộ tabs */
+.stTabs [role="tablist"] {
+    gap: 6px !important;           /* Khoảng cách giữa các tab */
+    padding-bottom: 6px !important;
+}
+
+/* Tab chưa được chọn */
+button[role="tab"] {
+    border-radius: 8px !important;     /* Góc bo mềm */
+    background-color: #f1f3f6 !important;
+    border: 1px solid #dce0e5 !important;
+    color: #303030 !important;
+    transition: all 0.25s ease !important;
+}
+
+/* Hover tab */
+button[role="tab"]:hover {
+    background-color: #e3e7ed !important;
+    border-color: #c7ccd3 !important;
+}
+
+/* Tab đang được chọn */
+button[role="tab"][aria-selected="true"] {
+    background-color: #cfe3ff !important;    /* Xanh nhạt */
+    border: 1px solid #4a90e2 !important;    /* Border xanh highlight */
+    color: #003366 !important;
+}
+
+/* Text trong tab đang chọn */
+button[role="tab"][aria-selected="true"] > div {
+    font-weight: 900 !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📈 Kaplan–Meier",
     "📉 ROC Curve (RDW)",
     "📊 ROC Comparison (AIMS65 / SOFA / RDW)",
     "🔶 RCS–Cox (Restricted Cubic Splines)",
-    "📊 Model Comparison – ROC Curves",
+    "⭐ Model Comparison – ROC Curves",
     "🚀 Gradient Boosting – Feature Selection + Training + Evaluation"
 ])
 
