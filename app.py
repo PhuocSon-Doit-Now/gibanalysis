@@ -382,74 +382,95 @@ with tab4:
     COVS_AVAILABLE = [c for c in COVARIATES_RCS if c in df.columns]
 
     # ---- Chạy Cox ----
-    def run_rcs(df, dur, evt, covs):
-        df2 = df.copy()
+    def run_rcs_cox(df, duration_col, event_col, covariates):
+        df_rcs = df.copy()
+        df_rcs['gender'] = np.where(df_rcs['gender']=='M', 1, 0)
+        df_rcs = df_rcs.dropna(subset=['rdw_max', duration_col, event_col])
 
-        if 'gender' in df2.columns:
-            df2['gender'] = np.where(df2['gender'].astype(str).str.startswith("M"),1,0)
+        knots = df_rcs['rdw_max'].quantile([0.05,0.50,0.95]).tolist()
 
-        df2 = df2.dropna(subset=['rdw_max', dur, evt])
-
-        knots = df2['rdw_max'].quantile([0.05,0.50,0.95]).tolist()
-
-        spline = rcs(df2['rdw_max'].values, knots)
+        spline = rcs(df_rcs['rdw_max'].values, knots)
         for k,v in spline.items():
-            df2[k] = v
-        spline_vars = list(spline.keys())
+            df_rcs[k] = v
 
-        covs = [c for c in covs if c in df2.columns]
-        FINAL = [dur, evt] + spline_vars + covs
-        df_fit = df2[FINAL].dropna()
+        spline_vars = list(spline.keys())
+        FINAL = [duration_col, event_col] + spline_vars + covariates
+
+        df_fit = df_rcs[FINAL].dropna()
 
         cph = CoxPHFitter()
-        cph.fit(df_fit, duration_col=dur, event_col=evt)
-        return cph, spline_vars, knots, df2
+        cph.fit(df_fit, duration_col=duration_col, event_col=event_col)
+
+        return cph, spline_vars, knots, df_rcs
+
 
     # ---- Plot HR ----
-    def plot_hr(ax, cph, df2, spline_vars, knots, covs, title):
-        x_min, x_max = df2['rdw_max'].min(), df2['rdw_max'].max()
-        xs = np.linspace(x_min, x_max, 200)
+    def plot_rcs_subplot(ax, cph, df_rcs, spline_vars, knots, covariates, title):
 
-        sp = rcs(xs, knots)
-        pred = pd.DataFrame({"rdw_max": xs})
-        for k,v in sp.items():
-            pred[k] = v
+        # ---------------------------
+        # 1. RDW range: dùng 1–99% để tránh outlier
+        # ---------------------------
+        rdw_range = np.linspace(
+            df_rcs['rdw_max'].quantile(0.01),
+            df_rcs['rdw_max'].quantile(0.99),
+            200
+        )
 
-        for c in covs:
-            if df2[c].nunique() > 2:
-                pred[c] = df2[c].median()
+        # ---------------------------
+        # 2. Build prediction dataframe (ĐẦY ĐỦ BIẾN)
+        # ---------------------------
+        spline_pred = rcs(rdw_range, knots)
+        pred_df = pd.DataFrame({'rdw_max': rdw_range})
+
+        # thêm spline vào pred_df
+        for k, v in spline_pred.items():
+            pred_df[k] = v
+
+        # thêm tất cả covariates
+        for col in covariates:
+            if df_rcs[col].nunique() > 2:
+                pred_df[col] = df_rcs[col].median()
             else:
-                pred[c] = df2[c].mode().iloc[0]
+                pred_df[col] = df_rcs[col].mode()[0]
 
-        params = list(cph.params_.index)
-        for p in params:
-            if p not in pred.columns:
-                pred[p] = 0.0
-
-        X = pred[params]
+        # ---------------------------
+        # 3. Linear predictor theo đúng thứ tự mô hình
+        # ---------------------------
+        X = pred_df[cph.params_.index]      # thứ tự KHÔNG được sai
         beta = cph.params_.values
-        log_hr = X.dot(beta)
+        LP = X.dot(beta)
 
-        mid = df2['rdw_max'].median()
-        idx0 = np.argmin(abs(xs - mid))
-        log_hr = log_hr - log_hr[idx0]
+        # ---------------------------
+        # 4. Normalize HR = 1 tại median RDW
+        # ---------------------------
+        rdw_median = df_rcs['rdw_max'].median()
+        idx_ref = (abs(rdw_range - rdw_median)).argmin()
+        LP0 = LP.iloc[idx_ref]
 
+        log_hr = LP - LP0
         HR = np.exp(log_hr)
 
-        var = cph.variance_matrix_.reindex(index=params, columns=params).fillna(0).values
-        Xv = X.values
-        SE = np.sqrt(np.sum((Xv @ var) * Xv, axis=1))
+        # ---------------------------
+        # 5. Đúng công thức SE = sqrt(X Σ Xᵀ)
+        # ---------------------------
+        var_beta = cph.variance_matrix_.values
+        SE = np.sqrt(np.einsum("ij,jk,ik->i", X, var_beta, X))
 
-        HR_low = np.exp(log_hr - 1.96*SE)
-        HR_up  = np.exp(log_hr + 1.96*SE)
+        HR_low = np.exp(log_hr - 1.96 * SE)
+        HR_up  = np.exp(log_hr + 1.96 * SE)
 
-        ax.plot(xs, HR, color='brown', lw=2)
-        ax.fill_between(xs, HR_low, HR_up, alpha=0.25, color='brown')
-        ax.axhline(1.0, ls='--', color='gray')
+        # ---------------------------
+        # 6. Plot
+        # ---------------------------
+        ax.plot(rdw_range, HR, color='brown', lw=2)
+        ax.fill_between(rdw_range, HR_low, HR_up, color='brown', alpha=0.25)
+
+        ax.axhline(1.0, linestyle='--', color='black')
+        ax.set_title(title, fontsize=12)
         ax.set_xlabel("RDW")
         ax.set_ylabel("Hazard Ratio")
-        ax.set_title(title)
         ax.grid(alpha=0.3)
+
 
     # ---- Tạo 1 figure với 4 outcome ----
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
@@ -457,8 +478,8 @@ with tab4:
 
     for i, (name, dur, evt) in enumerate(OUTCOME_LIST):
         try:
-            cph, spline_vars, knots, df2 = run_rcs(df, dur, evt, COVS_AVAILABLE)
-            plot_hr(axes[i], cph, df2, spline_vars, knots, COVS_AVAILABLE, name)
+            cph, spline_vars, knots, df2 = run_rcs_cox(df, dur, evt, COVS_AVAILABLE)
+            plot_rcs_subplot(axes[i], cph, df2, spline_vars, knots, COVS_AVAILABLE, name)
         except Exception as e:
             axes[i].text(0.5, 0.5, f"Model failed\n{e}", ha='center', va='center')
             axes[i].set_title(name)
