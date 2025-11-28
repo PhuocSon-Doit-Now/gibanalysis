@@ -604,7 +604,7 @@ with tab6:
     with col1:
         vars['age'] = st.number_input('Age', 16, 100, 60)
         vars['bmi'] = st.number_input('BMI', 10.0, 60.0, 22.5)
-        vars['temperature_max'] = st.number_input('Max Temperature', 33.0, 42.0, 37.0)
+        vars['temperature_max'] = st.number_input('Temperature', 33.0, 42.0, 37.0)
         vars['sofa'] = st.number_input('SOFA', 0, 24, 4)
         vars['sapsii'] = st.number_input('SAPSII', 0, 200, 35)
         vars['malignant_cancer'] = st.selectbox('Malignant cancer', [0, 1], index=0)
@@ -612,9 +612,9 @@ with tab6:
     with col2:
         vars['has_mv'] = st.selectbox('Mechanical Ventilation', [0, 1], index=0)
         vars['has_vaso'] = st.selectbox('Vasopressor', [0, 1], index=0)
-        vars['inr_max'] = st.number_input('INR max', 0.5, 10.0, 1.2)
-        vars['platelets_max'] = st.number_input('Platelets max', 1.0, 1500.0, 250.0)
-        vars['chloride_max'] = st.number_input('Chloride max', 70.0, 140.0, 104.0)
+        vars['inr_max'] = st.number_input('INR', 0.5, 10.0, 1.2)
+        vars['platelets_max'] = st.number_input('Platelets', 1.0, 1500.0, 250.0)
+        vars['chloride_max'] = st.number_input('Chloride', 70.0, 140.0, 104.0)
         vars['aims65_score'] = st.number_input('AIMS65 Score', 0, 5, 1)
 
     # ================================
