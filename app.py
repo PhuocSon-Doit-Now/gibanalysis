@@ -629,9 +629,8 @@ with tab6:
         pred = gb_model.predict(df_pred)[0]
         prob = gb_model.predict_proba(df_pred)[0][1]
 
-        st.subheader(f"### 🧾 Prediction: **{arr[pred]}**")
+        st.subheader(f"🧾 Prediction: **{arr[pred]}**")
         st.info(f"**Probability of Death:** {prob:.3f}")
-
         # ================================
         # SHAP VALUES
         # ================================
@@ -643,10 +642,3 @@ with tab6:
         fig_water, ax = plt.subplots(figsize=(10, 6))
         shap.plots.waterfall(shap_values[0], show=False)
         st.pyplot(fig_water)
-
-
-
-
-
-
-
