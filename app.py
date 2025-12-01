@@ -165,42 +165,69 @@ def youden_threshold(y, y_score):
 with tab1:
     st.subheader("Kaplan–Meier Survival Curves")
     durations = ['duration_30d', 'duration_90d']
-    events = ['event_30d', 'event_90d']
+    events = ['mortality_30d', 'mortality_90d']
     titles = ['30 days', '90 days']
+    desired_order = ['Q1', 'Q2', 'Q3', 'Q4']
 
-    fig, axes = plt.subplots(1, 2, figsize=(14,6))
+    # Ép lại thứ tự nhóm RDW (rất quan trọng để legend và plot đúng thứ tự)
+    df['rdw_group'] = pd.Categorical(df['rdw_group'], categories=desired_order, ordered=True)
+
+    # Chỉ giữ các nhóm thực sự có trong dữ liệu
+    groups = [g for g in desired_order if g in df['rdw_group'].unique()]
+
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 7))
     axes = axes.flatten()
 
     for i in range(len(durations)):
         ax = axes[i]
         models = []
-        for group in desired_order:
-            if 'rdw_group' not in df.columns:
+
+        # Vẽ từng nhóm theo đúng thứ tự groups
+        for group in groups:
+            df_g = df[df['rdw_group'] == group]
+            if df_g.empty:
                 continue
-            mask = df['rdw_group'] == group
-            if mask.sum() == 0:
-                continue
+
             kmf = KaplanMeierFitter()
-            kmf.fit(df.loc[mask, durations[i]], df.loc[mask, events[i]], label=group)
+            kmf.fit(
+                durations=df_g[durations[i]],
+                event_observed=df_g[events[i]],
+                label=group
+            )
             kmf.plot(ax=ax)
             models.append(kmf)
 
-        # log-rank (safe if columns exist)
-        if durations[i] in df.columns and events[i] in df.columns and 'rdw_group' in df.columns:
-            try:
-                results = multivariate_logrank_test(df[durations[i]], df['rdw_group'], df[events[i]])
-                p = results.p_value
-                p_text = "p < 0.001" if p < 0.001 else f"p = {p:.4f}"
-                ax.text(0.05, 0.05, p_text, transform=ax.transAxes)
-            except Exception:
-                pass
+        # Log-rank test
+        try:
+            results = multivariate_logrank_test(
+                event_durations=df[durations[i]],
+                groups=df['rdw_group'],
+                event_observed=df[events[i]]
+            )
+            pval = results.p_value
+            p_text = "Log-rank p < 0.001" if pval < 0.001 else f"Log-rank p = {pval:.4f}"
+            ax.text(0.05, 0.05, p_text, transform=ax.transAxes,
+                    fontsize=14, verticalalignment='bottom')
+        except Exception as e:
+            ax.text(0.05, 0.05, "Log-rank: error", transform=ax.transAxes)
 
-        # if models:
-        #     add_at_risk_counts(*models, ax=ax)
+        # Sắp xếp legend theo đúng thứ tự groups
+        handles, lbls = ax.get_legend_handles_labels()
+        label2h = dict(zip(lbls, handles))
+        ordered_handles = [label2h[g] for g in groups if g in label2h]
+        ordered_labels = [g for g in groups if g in label2h]
+        if ordered_handles:
+            ax.legend(ordered_handles, ordered_labels)
 
+        # Title, axis labels
         ax.set_title(titles[i])
-        ax.set_ylim(0,1)
-        if i == 1:
+        ax.set_ylabel('Survival probability')
+        ax.set_xlabel('Time (days)')
+        ax.set_yticks([0, 0.25, 0.5, 0.75, 1])
+        ax.set_ylim(0, 1)
+
+        # X-axis limit cho 90 ngày
+        if durations[i] == "duration_90d":
             ax.set_xlim(0, 90)
 
     st.pyplot(fig)
