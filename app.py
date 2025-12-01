@@ -10,6 +10,7 @@ import joblib
 import matplotlib.pyplot as plt
 from sklearn.metrics import RocCurveDisplay
 import shap
+import statsmodels.api as sm
 # shap.initjs()
 
 st.set_page_config(layout="wide")
