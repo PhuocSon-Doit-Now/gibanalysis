@@ -247,6 +247,7 @@ with tab2:
     axes = axes.flatten()
 
     for ax, (ycol, title) in zip(axes, outcomes):
+
         if ycol not in df.columns or 'rdw_max' not in df.columns:
             ax.axis('off')
             ax.text(0.5,0.5,f"Missing '{ycol}' or 'rdw_max'", ha='center')
@@ -261,31 +262,70 @@ with tab2:
             ax.axis('off')
             continue
 
+        # =====================================================
+        #        P-VALUE: LOGISTIC REGRESSION (statsmodels)
+        # =====================================================
+        import statsmodels.api as sm
+        X_sm = sm.add_constant(score)
+        logit = sm.Logit(y, X_sm)
+        res = logit.fit(disp=False)
+
+        pval = res.pvalues[1]
+        p_text = "P-value < 0.001" if pval < 0.001 else f"P = {pval:.3g}"
+
+        # Hiển thị p-value ở góc trên trái
+        ax.text(
+            0.02, 0.98,
+            p_text,
+            transform=ax.transAxes,
+            fontsize=12,
+            fontweight='bold',
+            va='top'
+        )
+        # =====================================================
+
+        # ROC
         fpr, tpr, _ = roc_curve(y, score)
         auc = roc_auc_score(y, score)
+
+        # Bootstrap AUC + ROC band
         auc_boot, (ci_low, ci_high) = bootstrap_auc_ci(y, score, n_boot=500, seed=42)
         fpr_grid, tpr_mean, tpr_low, tpr_high = bootstrap_roc_band(y, score, n_boot=500, seed=42)
+
+        # Youden index
         thr, sens, spec = youden_threshold(y, score)
 
+        # Draw ROC
         ax.plot(fpr, tpr, label=f"ROC (AUC={auc:.3f})", linewidth=2)
         ax.fill_between(fpr_grid, tpr_low, tpr_high, alpha=0.2)
-        ax.plot([0,1],[0,1],'--', color='gray', alpha=0.6)
-        ax.scatter([1-spec],[sens], c='black')
-        ax.annotate(f"Thr={thr:.2f}\nSens={sens:.2f}\nSpec={spec:.2f}",
-                    xy=(1-spec, sens), xytext=(20,-20), textcoords='offset points',
-                    bbox=dict(boxstyle="round", fc="white", ec="black", alpha=0.8))
 
+        ax.plot([0,1],[0,1],'--', color='gray', alpha=0.6)
+
+        # Youden point
+        ax.scatter([1-spec],[sens], c='black')
+        ax.annotate(
+            f"Thr={thr:.2f}\nSens={sens:.2f}\nSpec={spec:.2f}",
+            xy=(1-spec, sens),
+            xytext=(20,-20),
+            textcoords='offset points',
+            bbox=dict(boxstyle="round", fc="white", ec="black", alpha=0.8)
+        )
+
+        # Labels & CI box
         ax.set_xlabel("1 - Specificity")
         ax.set_ylabel("Sensitivity")
         ax.set_title(title)
         ax.set_xlim(0,1)
         ax.set_ylim(0,1)
         ax.grid(True)
-        ax.text(0.6,0.12, f"AUC 95% CI:\n({ci_low:.3f}, {ci_high:.3f})", transform=ax.transAxes,
-                bbox=dict(facecolor="white", alpha=0.8))
 
+        ax.text(
+            0.60, 0.12,
+            f"AUC 95% CI:\n({ci_low:.3f}, {ci_high:.3f})",
+            transform=ax.transAxes,
+            bbox=dict(facecolor="white", alpha=0.8)
+        )
     st.pyplot(fig)
-
 # ======================================================
 # TAB 3: ROC Comparison
 # ======================================================
@@ -315,9 +355,45 @@ with tab3:
     for ax_idx, (ycol, title) in enumerate(outcomes):
         ax = axes[ax_idx]
 
+        # ==========================================================
+        # 👉 (A) Tính p-value chung từ model AIMS65 + RDW
+        # ==========================================================
+        predictors_all = ['aims65_score', 'rdw_max']
+
+        mask_all = df[[ycol] + predictors_all].notna().all(axis=1)
+        y_all = df.loc[mask_all, ycol].astype(int).values
+        X_all = df.loc[mask_all, predictors_all].values
+
+        try:
+            X_sm = sm.add_constant(X_all)
+            logit = sm.Logit(y_all, X_sm)
+            res = logit.fit(disp=False)
+
+            max_p = float(np.max(res.pvalues))
+
+            if max_p < 0.05:
+                p_text = "all P < 0.05"
+            else:
+                p_text = f"all P = {max_p:.3g}"
+        except:
+            p_text = "P-value: N/A"
+
+        # Hiển thị p-value ở góc trên trái
+        ax.text(
+            0.02, 0.98, p_text,
+            ha='left', va='top',
+            transform=ax.transAxes,
+            fontsize=12,
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.6)
+        )
+        # ==========================================================
+
+        # ==========================================================
+        # 👉 (B) Vẽ ROC cho tất cả các model
+        # ==========================================================
         for name, config in models.items():
             predictors = config["predictors"]
-            # check columns
+
             if any([p not in df.columns for p in predictors]) or ycol not in df.columns:
                 continue
 
@@ -328,7 +404,7 @@ with tab3:
             if len(y) < 20 or y.min() == y.max():
                 continue
 
-            if predictors == ["rdw_max"] or predictors == ["aims65_score"]:
+            if predictors in [["rdw_max"], ["aims65_score"]]:
                 scores = X.flatten()
             else:
                 log_reg = LogisticRegression(solver='liblinear', random_state=RANDOM_SEED)
@@ -343,8 +419,13 @@ with tab3:
                 fpr_grid, tpr_mean, tpr_low, tpr_high = bootstrap_roc_band(y, scores, n_boot=300, seed=RANDOM_SEED)
                 ax.fill_between(fpr_grid, tpr_low, tpr_high, alpha=0.08, color=config['color'])
 
-            ax.plot(fpr, tpr, linestyle=config['linestyle'], color=config['color'], linewidth=2,
-                    label=f"{name} AUC={auc:.3f} (95% CI {ci_low:.3f}–{ci_high:.3f})")
+            ax.plot(
+                fpr, tpr,
+                linestyle=config['linestyle'],
+                color=config['color'],
+                linewidth=2,
+                label=f"{name} AUC={auc:.3f} (95% CI {ci_low:.3f}–{ci_high:.3f})"
+            )
 
         ax.plot([0, 1], [0, 1], '--', color='gray')
         ax.set_title(title)
@@ -356,7 +437,6 @@ with tab3:
         ax.legend(loc="lower right", fontsize='small')
 
     st.pyplot(fig)
-
 # ======================================================
 # TAB 4: RCS–Cox (robust implementation tuned to your pipeline)
 # ======================================================
