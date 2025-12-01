@@ -7,3 +7,4 @@ lifelines
 patsy
 joblib
 shap
+sm
