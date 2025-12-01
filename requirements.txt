@@ -7,4 +7,4 @@ lifelines
 patsy
 joblib
 shap
-sm
+statsmodels
