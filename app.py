@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from lifelines import KaplanMeierFitter, CoxPHFitter
+from lifelines import KaplanMeierFitter
 from lifelines.statistics import multivariate_logrank_test
 from sklearn.metrics import roc_curve, roc_auc_score
 from sklearn.linear_model import LogisticRegression
@@ -11,7 +11,10 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import RocCurveDisplay
 import shap
 import statsmodels.api as sm
-# shap.initjs()
+from pandas import DataFrame
+import statsmodels.formula.api as smf
+from scipy.stats import chi2
+import seaborn as sns
 
 st.set_page_config(layout="wide")
 st.title("Red Blood Cell Distribution Width as a Risk Factor for 30/90‑Day Mortality in Patients with Gastrointestinal Bleeding")
@@ -338,8 +341,10 @@ with tab3:
     np.random.seed(RANDOM_SEED)
 
     outcomes = [
-        ('event_30d', '30-day ICU mortality'),
-        ('event_90d', '90-day ICU mortality')
+        ('event_30d', '30-day ICU'),
+        ('event_90d', '90-day ICU'),
+        ('icu_mortality', 'ICU mortality'),
+        ('hosp_mortality', 'Hosp mortality')
     ]
 
     models = {
@@ -350,7 +355,7 @@ with tab3:
         'SOFA+RDW': {'predictors': ['sofa', 'rdw_max'], 'linestyle': '-.', 'color': 'red'},
     }
 
-    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     axes = axes.flatten()
 
     for ax_idx, (ycol, title) in enumerate(outcomes):
@@ -441,159 +446,74 @@ with tab3:
 # ======================================================
 # TAB 4: RCS–Cox (robust implementation tuned to your pipeline)
 # ======================================================
-COVARIATES_RCS = [
-    'age', 'gender', 'bmi', 'sofa', 'sapsii', 
-    'inr_max', 'pt_max', 'ptt_max', 
-    'hemoglobin_min', 'platelets_min', 
-    'has_mv', 'has_vaso', 'has_crrt', 
-    'myocardial_infarct', 'congestive_heart_failure',
-    'cerebrovascular_disease', 'chronic_pulmonary_disease',
-    'renal_disease', 'malignant_cancer', 
-    'diabetes', 'liver_disease'
-]
-OUTCOME_LIST = [
-    ("30-day mortality", "duration_30d", "event_30d"),
-    ("90-day mortality", "duration_90d", "event_90d"),
-    ("ICU mortality", "los_icu", "icu_mortality"),
-    ("Hospital mortality", "los_hosp", "hosp_mortality")
-]
-
-def rcs(x, knots):
-    knots = np.sort(knots)
-    k = len(knots)
-    if k < 3:
-        raise ValueError("RCS requires at least 3 knots.")
-
-    def pos(y):
-        return np.where(y > 0, y, 0)
-
-    k_K = knots[-1]
-    k_K_1 = knots[-2]
-    
-    bases = {}
-    for j in range(k - 2):
-        k_j = knots[j]
-        term1 = pos(x - k_j)**3
-        term2 = pos(x - k_K_1)**3 * ((k_K - k_j) / (k_K - k_K_1))
-        term3 = pos(x - k_K)**3 * ((k_K_1 - k_j) / (k_K - k_K_1))
-        
-        B_j = (term1 - term2 + term3)
-        bases[f"rcs_basis_{j+1}"] = B_j
-
-    return bases
-
 with tab4:
-
+    # Đảm bảo bạn đã import các thư viện cần thiết:
+    # import streamlit as st
+    # import matplotlib.pyplot as plt
+    # import statsmodels.formula.api as smf
+    # import statsmodels.api as sm
+    # import numpy as np
+    # from pandas import DataFrame
+    # from scipy.stats import chi2
+    # import seaborn as sns 
+    
     st.subheader("Restricted Cubic Spline Cox models (RCS–Cox)")
-
-    # Covariates có trong df
-    COVS_AVAILABLE = [c for c in COVARIATES_RCS if c in df.columns]
-
-    # ---- Chạy Cox ----
-    def run_rcs_cox(df, duration_col, event_col, covariates):
-        df_rcs = df.copy()
-        df_rcs['gender'] = np.where(df_rcs['gender']=='M', 1, 0)
-        df_rcs = df_rcs.dropna(subset=['rdw_max', duration_col, event_col])
-
-        knots = df_rcs['rdw_max'].quantile([0.05,0.50,0.95]).tolist()
-
-        spline = rcs(df_rcs['rdw_max'].values, knots)
-        for k,v in spline.items():
-            df_rcs[k] = v
-
-        spline_vars = list(spline.keys())
-        FINAL = [duration_col, event_col] + spline_vars + covariates
-
-        df_fit = df_rcs[FINAL].dropna()
-
-        cph = CoxPHFitter()
-        cph.fit(df_fit, duration_col=duration_col, event_col=event_col)
-
-        return cph, spline_vars, knots, df_rcs
-
-
-    # ---- Plot HR ----
-    def plot_rcs_subplot(ax, cph, df_rcs, spline_vars, knots, covariates, title):
-
-        # ---------------------------
-        # 1. RDW range: dùng 1–99% để tránh outlier
-        # ---------------------------
-        rdw_range = np.linspace(
-            df_rcs['rdw_max'].quantile(0.01),
-            df_rcs['rdw_max'].quantile(0.99),
-            200
-        )
-
-        # ---------------------------
-        # 2. Build prediction dataframe (ĐẦY ĐỦ BIẾN)
-        # ---------------------------
-        spline_pred = rcs(rdw_range, knots)
-        pred_df = pd.DataFrame({'rdw_max': rdw_range})
-
-        # thêm spline vào pred_df
-        for k, v in spline_pred.items():
-            pred_df[k] = v
-
-        # thêm tất cả covariates
-        for col in covariates:
-            if df_rcs[col].nunique() > 2:
-                pred_df[col] = df_rcs[col].median()
-            else:
-                pred_df[col] = df_rcs[col].mode()[0]
-
-        # ---------------------------
-        # 3. Linear predictor theo đúng thứ tự mô hình
-        # ---------------------------
-        X = pred_df[cph.params_.index]      # thứ tự KHÔNG được sai
-        beta = cph.params_.values
-        LP = X.dot(beta)
-
-        # ---------------------------
-        # 4. Normalize HR = 1 tại median RDW
-        # ---------------------------
-        rdw_median = df_rcs['rdw_max'].median()
-        idx_ref = (abs(rdw_range - rdw_median)).argmin()
-        LP0 = LP.iloc[idx_ref]
-
-        log_hr = LP - LP0
-        HR = np.exp(log_hr)
-
-        # ---------------------------
-        # 5. Đúng công thức SE = sqrt(X Σ Xᵀ)
-        # ---------------------------
-        var_beta = cph.variance_matrix_.values
-        SE = np.sqrt(np.einsum("ij,jk,ik->i", X, var_beta, X))
-
-        HR_low = np.exp(log_hr - 1.96 * SE)
-        HR_up  = np.exp(log_hr + 1.96 * SE)
-
-        # ---------------------------
-        # 6. Plot
-        # ---------------------------
-        ax.plot(rdw_range, HR, color='brown', lw=2)
-        ax.fill_between(rdw_range, HR_low, HR_up, color='brown', alpha=0.25)
-
-        ax.axhline(1.0, linestyle='--', color='black')
-        ax.set_title(title, fontsize=12)
-        ax.set_xlabel("RDW")
-        ax.set_ylabel("Hazard Ratio")
-        ax.grid(alpha=0.3)
-
-
-    # ---- Tạo 1 figure với 4 outcome ----
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    
+    def format_p(p):
+        if p < 0.001:
+            return 'p<0.001'
+        return f'{p:.3f}'
+    
+    mortalities = ['mortality_30d', 'mortality_90d', 'hosp_mortality', 'icu_mortality']
+    
+    # Tạo figure
+    fig, axes = plt.subplots(nrows = 2, ncols = 2, figsize=(25, 18))
     axes = axes.flatten()
+    n_knof = 3
+    
+    for i in range(4):
+        # 1. Linear model (GLM - Binomial)
+        model_linear = smf.glm(formula = f'{mortalities[i]} ~ rdw_max', data=df, family = sm.families.Binomial())
+        result_linear = model_linear.fit()
+        
+        # 2. Spline model (GLM - Binomial)
+        # Lưu ý: 'bs' (basis spline) là hàm của thư viện 'patsy' được statsmodels sử dụng
+        model_spline = smf.glm(formula = f'{mortalities[i]} ~ bs(rdw_max, df = {n_knof}, include_intercept = False)', data=df, family=sm.families.Binomial())
+        result_spline = model_spline.fit()
+        
+        # 3. Likelihood Ratio Test (Kiểm định phi tuyến tính)
+        LR = 2 * (result_spline.llf - result_linear.llf)
+        df_diff = result_spline.df_model - result_linear.df_model
+        p_nonlinear = chi2.sf(LR, df_diff)
 
-    for i, (name, dur, evt) in enumerate(OUTCOME_LIST):
-        try:
-            cph, spline_vars, knots, df2 = run_rcs_cox(df, dur, evt, COVS_AVAILABLE)
-            plot_rcs_subplot(axes[i], cph, df2, spline_vars, knots, COVS_AVAILABLE, name)
-        except Exception as e:
-            axes[i].text(0.5, 0.5, f"Model failed\n{e}", ha='center', va='center')
-            axes[i].set_title(name)
+        # 4. Dự đoán và Khoảng tin cậy
+        x_pred = DataFrame(data = {'rdw_max': np.linspace(df['rdw_max'].min(), df['rdw_max'].max(), 100)})
+        result_pred = result_spline.get_prediction(x_pred)
+        pred_mean = result_pred.predicted_mean
+        ci = result_pred.conf_int()
+        
+        ax = axes[i]
+        
+        # 5. Plot đường cong và khoảng tin cậy
+        ax.plot(x_pred, pred_mean, label="Fitted", color='red')
+        ax.fill_between(x_pred['rdw_max'].values, ci[:,0], ci[:,1], color='red', alpha=0.2)
 
-    plt.tight_layout()
-    st.pyplot(fig)
+        # 6. Thêm các đường tham chiếu
+        ax.axhline(y=0.5, color='black', linestyle='--', linewidth=0.8)
+        ax.axvline(x=df["rdw_max"].median(), color='gray', linestyle='--', linewidth=0.7)
+
+        # 7. Add histogram (Trục phụ)
+        ax2 = ax.twinx()
+        sns.histplot(df["rdw_max"], ax=ax2, bins=40, color='blue', alpha=0.3, stat="density")
+        ax2.set_yticks([])
+
+        # 8. Set labels và P-value
+        ax.set_xlabel("RDW")
+        ax.set_ylabel(f"{mortalities[i]} days probability")
+        ax.set_title(f"{mortalities[i]}")
+        text = f"P-nonlinear {format_p(p_nonlinear)}"
+        ax.text(0.98, 0.90, text, transform=ax.transAxes, ha='right', va='top', fontsize=12, bbox=dict(facecolor='white', alpha=0.7, edgecolor='black'))
+    st.pyplot(fig) # <--- Sửa lỗi ở đây
 # ======================================================
 # TAB 5: Model Comparison – ROC Curves (30-day & 90-day Mortality)
 # ======================================================
@@ -699,7 +619,10 @@ with tab6:
     gb_model, X_train_tab6 = load_gb_model()
 
     # SHAP Explainer
-    explainer = shap.Explainer(gb_model, X_train_tab6)
+    @st.cache_resource
+    def create_shap_explainer(_model, X_train):
+        return shap.Explainer(_model, X_train)
+    explainer = create_shap_explainer(gb_model, X_train_tab6)
 
     # ================================
     # USER INPUT

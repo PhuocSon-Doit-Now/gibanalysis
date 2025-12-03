@@ -8,3 +8,6 @@ patsy
 joblib
 shap
 statsmodels
+seaborn
+scipy
+pyarrow
