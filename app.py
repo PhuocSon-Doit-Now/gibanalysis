@@ -519,7 +519,7 @@ with tab4:
 # ======================================================
 with tab5:
 
-    st.header("📊 Model Comparison – ROC Curves (30-day & 90-day Mortality)")
+    st.header("Model Comparison – ROC Curves (30-day & 90-day Mortality)")
 
     BASE_DIR = os.path.dirname(__file__)
 
@@ -592,7 +592,7 @@ with tab5:
 # ======================================================
 with tab6:
 
-    st.header("🧠 Gradient Boosting – Mortality Prediction")
+    st.header("Gradient Boosting – Mortality Prediction")
 
     BASE_DIR = os.path.dirname(__file__)
 
