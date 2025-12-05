@@ -179,7 +179,7 @@ with tab1:
     # Chỉ giữ các nhóm thực sự có trong dữ liệu
     groups = [g for g in desired_order if g in df['rdw_group'].unique()]
 
-    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(15, 7))
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(14, 6))
     axes = axes.flatten()
 
     for i in range(len(durations)):
