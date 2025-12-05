@@ -447,16 +447,6 @@ with tab3:
 # TAB 4: RCS–Cox (robust implementation tuned to your pipeline)
 # ======================================================
 with tab4:
-    # Đảm bảo bạn đã import các thư viện cần thiết:
-    # import streamlit as st
-    # import matplotlib.pyplot as plt
-    # import statsmodels.formula.api as smf
-    # import statsmodels.api as sm
-    # import numpy as np
-    # from pandas import DataFrame
-    # from scipy.stats import chi2
-    # import seaborn as sns 
-    
     st.subheader("Restricted Cubic Spline Cox models (RCS–Cox)")
     
     def format_p(p):
@@ -562,7 +552,7 @@ with tab5:
     mortalities = ["mortality_30d", "mortality_90d"]
     titles = ["30-Day Mortality", "90-Day Mortality"]
 
-    fig, axes = plt.subplots(1, 2, figsize=(20, 8))
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
     for i, target in enumerate(mortalities):
 
