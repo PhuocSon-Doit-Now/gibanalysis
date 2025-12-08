@@ -11,4 +11,3 @@ statsmodels
 seaborn
 scipy
 pyarrow
-PIL
