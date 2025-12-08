@@ -15,8 +15,15 @@ from pandas import DataFrame
 import statsmodels.formula.api as smf
 from scipy.stats import chi2
 import seaborn as sns
+from PIL import Image
 
-st.set_page_config(layout="wide")
+icon = Image.open("favicon.png")
+
+st.set_page_config(
+    page_title="Red Blood Cell Distribution - Gastrointestinal Bleeding",
+    page_icon=icon,
+    layout="wide"
+)
 st.title("Red Blood Cell Distribution Width as a Risk Factor for 30/90‑Day Mortality in Patients with Gastrointestinal Bleeding")
 
 # ======================================================
@@ -102,6 +109,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "⭐ Model Comparison – ROC Curves",
     "🚀 Gradient Boosting – Feature Selection + Training + Evaluation"
 ])
+
 
 # --------------------
 # Helper functions for ROC
@@ -578,7 +586,7 @@ with tab5:
 
     st.pyplot(fig)
 # ======================================================
-# TAB 6: Gradient Boosting – Mortality Prediction
+# TAB 6: Gradient Boosting – Mortality Prediction (FIXED)
 # ======================================================
 with tab6:
 
@@ -587,79 +595,157 @@ with tab6:
     BASE_DIR = os.path.dirname(__file__)
 
     # ================================
-    # LOAD MODEL + X_train
+    # LOAD MODEL + X_train (CACHE)
     # ================================
     @st.cache_resource
     def load_gb_model():
-        model_path = os.path.join(BASE_DIR, "gb_model.joblib")
-        xtrain_path = os.path.join(BASE_DIR, "gb_X_train.joblib")
-
-        if not os.path.exists(model_path):
-            st.error("❌ Missing file: gb_model.joblib")
-            st.stop()
-
-        if not os.path.exists(xtrain_path):
-            st.error("❌ Missing file: gb_X_train.joblib")
-            st.stop()
-
-        model = joblib.load(model_path)
-        X_train = joblib.load(xtrain_path)
+        model = joblib.load(os.path.join(BASE_DIR, "gb_model.joblib"))
+        X_train = joblib.load(os.path.join(BASE_DIR, "gb_X_train.joblib"))
         return model, X_train
 
     gb_model, X_train_tab6 = load_gb_model()
 
-    # SHAP Explainer
+    # ================================
+    # SHAP EXPLAINER (CACHE)
+    # ================================
     @st.cache_resource
     def create_shap_explainer(_model, X_train):
         return shap.Explainer(_model, X_train)
+
     explainer = create_shap_explainer(gb_model, X_train_tab6)
 
     # ================================
-    # USER INPUT
+    # SESSION STATE INIT
+    # ================================
+    if "predicted" not in st.session_state:
+        st.session_state.predicted = False
+        st.session_state.pred = None
+        st.session_state.prob = None
+        st.session_state.shap_values = None
+        st.session_state.df_pred = None
+
+    # ================================
+    # INPUT FORM (NO AUTO-RERUN)
     # ================================
     st.subheader("📋 Input patient values")
 
-    col1, col2 = st.columns(2)
+    with st.form("prediction_form"):
 
-    vars = {}
-    with col1:
-        vars['age'] = st.number_input('Age', 16, 100, 60)
-        vars['bmi'] = st.number_input('BMI', 10.0, 60.0, 22.5)
-        vars['temperature_max'] = st.number_input('Temperature', 33.0, 42.0, 37.0)
-        vars['sofa'] = st.number_input('SOFA', 0, 24, 4)
-        vars['sapsii'] = st.number_input('SAPSII', 0, 200, 35)
-        vars['malignant_cancer'] = st.selectbox('Malignant cancer', [0, 1], index=0)
+        col1, col2 = st.columns(2)
+        vars = {}
+        feature_ranges = {
+            col: {
+                "min": float(X_train_tab6[col].min()),
+                "max": float(X_train_tab6[col].max()),
+                "median": float(X_train_tab6[col].median())
+            }
+            for col in X_train_tab6.columns
+        }
+        with col1:
+            vars['age'] = st.number_input(
+                'Age',
+                min_value=feature_ranges['age']['min'],
+                max_value=feature_ranges['age']['max'],
+                value=feature_ranges['age']['median']
+            )
 
-    with col2:
-        vars['has_mv'] = st.selectbox('Mechanical Ventilation', [0, 1], index=0)
-        vars['has_vaso'] = st.selectbox('Vasopressor', [0, 1], index=0)
-        vars['inr_max'] = st.number_input('INR', 0.5, 10.0, 1.2)
-        vars['platelets_max'] = st.number_input('Platelets', 1.0, 1500.0, 250.0)
-        vars['chloride_max'] = st.number_input('Chloride', 70.0, 140.0, 104.0)
-        vars['aims65_score'] = st.number_input('AIMS65 Score', 0, 5, 1)
+            vars['bmi'] = st.number_input(
+                'BMI',
+                min_value=feature_ranges['bmi']['min'],
+                max_value=feature_ranges['bmi']['max'],
+                value=feature_ranges['bmi']['median']
+            )
 
+            vars['temperature_max'] = st.number_input(
+                'Temperature (°C)',
+                min_value=feature_ranges['temperature_max']['min'],
+                max_value=feature_ranges['temperature_max']['max'],
+                value=feature_ranges['temperature_max']['median']
+            )
+
+            vars['sofa'] = st.number_input(
+                'SOFA',
+                min_value=int(feature_ranges['sofa']['min']),
+                max_value=int(feature_ranges['sofa']['max']),
+                value=int(feature_ranges['sofa']['median'])
+            )
+
+            vars['sapsii'] = st.number_input(
+                'SAPSII',
+                min_value=int(feature_ranges['sapsii']['min']),
+                max_value=int(feature_ranges['sapsii']['max']),
+                value=int(feature_ranges['sapsii']['median'])
+            )
+
+            vars['malignant_cancer'] = st.selectbox(
+                'Malignant cancer',
+                [0, 1],
+                index=0
+            )
+
+        with col2:
+            vars['has_mv'] = st.selectbox('Mechanical Ventilation', [0, 1], index=0)
+            vars['has_vaso'] = st.selectbox('Vasopressor', [0, 1], index=0)
+
+            vars['inr_max'] = st.number_input(
+                'INR',
+                min_value=feature_ranges['inr_max']['min'],
+                max_value=feature_ranges['inr_max']['max'],
+                value=feature_ranges['inr_max']['median']
+            )
+
+            vars['platelets_max'] = st.number_input(
+                'Platelets',
+                min_value=feature_ranges['platelets_max']['min'],
+                max_value=feature_ranges['platelets_max']['max'],
+                value=feature_ranges['platelets_max']['median']
+            )
+
+            vars['chloride_max'] = st.number_input(
+                'Chloride',
+                min_value=feature_ranges['chloride_max']['min'],
+                max_value=feature_ranges['chloride_max']['max'],
+                value=feature_ranges['chloride_max']['median']
+            )
+
+            vars['aims65_score'] = st.number_input(
+                'AIMS65 Score',
+                min_value=int(feature_ranges['aims65_score']['min']),
+                max_value=int(feature_ranges['aims65_score']['max']),
+                value=int(feature_ranges['aims65_score']['median'])
+            )
+        submitted = st.form_submit_button("🔮 Predict")
     # ================================
-    # PREDICT BUTTON
+    # RUN PREDICTION (ONLY ON SUBMIT)
     # ================================
-    arr = ['Survival', 'Died']
-
-    if st.button("🔮 Predict"):
+    if submitted:
 
         df_pred = pd.DataFrame([vars])
 
         pred = gb_model.predict(df_pred)[0]
         prob = gb_model.predict_proba(df_pred)[0][1]
 
-        st.subheader(f"🧾 Prediction: **{arr[pred]}**")
-        st.info(f"**Probability of Death:** {prob:.3f}")
-        # ================================
-        # SHAP VALUES
-        # ================================
         shap_values = explainer(df_pred)
 
-        # ---------- WATERFALL PLOT ----------
+        st.session_state.predicted = True
+        st.session_state.pred = pred
+        st.session_state.prob = prob
+        st.session_state.shap_values = shap_values
+        st.session_state.df_pred = df_pred
+
+    # ================================
+    # DISPLAY RESULTS (NO RERUN)
+    # ================================
+    if st.session_state.predicted:
+
+        arr = ['Survival', 'Died']
+
+        st.subheader(f"🧾 Prediction: **{arr[st.session_state.pred]}**")
+        st.info(f"**Probability of Death:** {st.session_state.prob:.3f}")
+
+        # ---------- SHAP WATERFALL ----------
         st.subheader("🌊 SHAP Waterfall Plot")
 
         fig_water, ax = plt.subplots(figsize=(10, 6))
-        shap.plots.waterfall(shap_values[0], show=False)
+        shap.plots.waterfall(st.session_state.shap_values[0], show=False)
         st.pyplot(fig_water)
