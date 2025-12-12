@@ -643,7 +643,7 @@ with tab6:
         }
         with col1:
             vars['gender'] = st.selectbox(
-                'Gender (0 = Female, 1 = Male)',
+                'Gender (Female = 0, Male = 1)',
                 [0, 1],
                 index=0
             )
@@ -701,14 +701,14 @@ with tab6:
             )
 
             vars['inr_max'] = st.number_input(
-                'INR',
+                'International Normalized Ratio (INR)',
                 min_value=feature_ranges['inr_max']['min'],
                 max_value=feature_ranges['inr_max']['max'],
                 value=feature_ranges['inr_max']['median']
             )
 
             vars['mcv_max'] = st.number_input(
-                'MCV',
+                'Mean Corpuscular Volume (MCV)',
                 min_value=feature_ranges['mcv_max']['min'],
                 max_value=feature_ranges['mcv_max']['max'],
                 value=feature_ranges['mcv_max']['median']
