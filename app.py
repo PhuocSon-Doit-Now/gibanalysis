@@ -599,8 +599,8 @@ with tab6:
     # ================================
     @st.cache_resource
     def load_gb_model():
-        model = joblib.load(os.path.join(BASE_DIR, "gb_model.joblib"))
-        X_train = joblib.load(os.path.join(BASE_DIR, "gb_X_train.joblib"))
+        model = joblib.load(os.path.join(BASE_DIR, "gb_modelll.joblib"))
+        X_train = joblib.load(os.path.join(BASE_DIR, "gb_X_trainnn.joblib"))
         return model, X_train
 
     gb_model, X_train_tab6 = load_gb_model()
@@ -642,18 +642,10 @@ with tab6:
             for col in X_train_tab6.columns
         }
         with col1:
-            vars['age'] = st.number_input(
-                'Age',
-                min_value=feature_ranges['age']['min'],
-                max_value=feature_ranges['age']['max'],
-                value=feature_ranges['age']['median']
-            )
-
-            vars['bmi'] = st.number_input(
-                'BMI',
-                min_value=feature_ranges['bmi']['min'],
-                max_value=feature_ranges['bmi']['max'],
-                value=feature_ranges['bmi']['median']
+            vars['gender'] = st.selectbox(
+                'Gender (0 = Female, 1 = Male)',
+                [0, 1],
+                index=0
             )
 
             vars['temperature_max'] = st.number_input(
@@ -677,6 +669,12 @@ with tab6:
                 value=int(feature_ranges['sapsii']['median'])
             )
 
+            vars['cerebrovascular_disease'] = st.selectbox(
+                'Cerebrovascular disease',
+                [0, 1],
+                index=0
+            )
+
             vars['malignant_cancer'] = st.selectbox(
                 'Malignant cancer',
                 [0, 1],
@@ -684,8 +682,23 @@ with tab6:
             )
 
         with col2:
-            vars['has_mv'] = st.selectbox('Mechanical Ventilation', [0, 1], index=0)
-            vars['has_vaso'] = st.selectbox('Vasopressor', [0, 1], index=0)
+            vars['diabetes'] = st.selectbox(
+                'Diabetes',
+                [0, 1],
+                index=0
+            )
+
+            vars['has_mv'] = st.selectbox(
+                'Mechanical Ventilation',
+                [0, 1],
+                index=0
+            )
+
+            vars['has_vaso'] = st.selectbox(
+                'Vasopressor',
+                [0, 1],
+                index=0
+            )
 
             vars['inr_max'] = st.number_input(
                 'INR',
@@ -694,18 +707,11 @@ with tab6:
                 value=feature_ranges['inr_max']['median']
             )
 
-            vars['platelets_max'] = st.number_input(
-                'Platelets',
-                min_value=feature_ranges['platelets_max']['min'],
-                max_value=feature_ranges['platelets_max']['max'],
-                value=feature_ranges['platelets_max']['median']
-            )
-
-            vars['chloride_max'] = st.number_input(
-                'Chloride',
-                min_value=feature_ranges['chloride_max']['min'],
-                max_value=feature_ranges['chloride_max']['max'],
-                value=feature_ranges['chloride_max']['median']
+            vars['mcv_max'] = st.number_input(
+                'MCV',
+                min_value=feature_ranges['mcv_max']['min'],
+                max_value=feature_ranges['mcv_max']['max'],
+                value=feature_ranges['mcv_max']['median']
             )
 
             vars['aims65_score'] = st.number_input(
@@ -714,6 +720,7 @@ with tab6:
                 max_value=int(feature_ranges['aims65_score']['max']),
                 value=int(feature_ranges['aims65_score']['median'])
             )
+
         submitted = st.form_submit_button("🔮 Predict")
     # ================================
     # RUN PREDICTION (ONLY ON SUBMIT)
@@ -725,7 +732,7 @@ with tab6:
         pred = gb_model.predict(df_pred)[0]
         prob = gb_model.predict_proba(df_pred)[0][1]
 
-        shap_values = explainer(df_pred)
+        shap_values = explainer(df_pred, check_additivity=False)
 
         st.session_state.predicted = True
         st.session_state.pred = pred
